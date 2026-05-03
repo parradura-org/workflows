@@ -1,0 +1,32 @@
+name: Release Please
+
+on:
+  workflow_call:
+    inputs:
+      target-branch:
+        type: string
+        default: 'main'
+      release-type:
+        type: string
+        default: 'node'
+      config-file:
+        type: string
+        default: 'release-please-config.json'
+      manifest-file:
+        type: string
+        default: '.release-please-manifest.json'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          target-branch: ${{ inputs.target-branch }}
+          release-type: ${{ inputs.release-type }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}

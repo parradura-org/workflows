@@ -1,0 +1,80 @@
+name: Node CI
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '20'
+        description: 'Versión de Node.js'
+      package-manager:
+        type: string
+        default: 'npm'
+        description: 'npm, pnpm, yarn o bun'
+      run-lint:
+        type: boolean
+        default: true
+      run-typecheck:
+        type: boolean
+        default: true
+      run-tests:
+        type: boolean
+        default: true
+      run-build:
+        type: boolean
+        default: false
+        description: 'Activar para Next.js u otros que requieran build en CI'
+      working-directory:
+        type: string
+        default: '.'
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        if: inputs.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Bun
+        if: inputs.package-manager == 'bun'
+        uses: oven-sh/setup-bun@v1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager == 'bun' && '' || inputs.package-manager }}
+
+      - name: Install dependencies
+        run: |
+          case "${{ inputs.package-manager }}" in
+            pnpm) pnpm install --frozen-lockfile ;;
+            yarn) yarn install --frozen-lockfile ;;
+            bun)  bun install --frozen-lockfile ;;
+            *)    npm ci ;;
+          esac
+
+      - name: Lint
+        if: inputs.run-lint
+        run: ${{ inputs.package-manager }} run lint
+
+      - name: Typecheck
+        if: inputs.run-typecheck
+        run: ${{ inputs.package-manager }} run typecheck
+
+      - name: Test
+        if: inputs.run-tests
+        run: ${{ inputs.package-manager }} run test
+
+      - name: Build
+        if: inputs.run-build
+        run: ${{ inputs.package-manager }} run build
