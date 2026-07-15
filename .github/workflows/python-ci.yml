@@ -1,0 +1,117 @@
+name: Python CI
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        type: string
+        default: '3.12'
+        description: 'Versión de Python'
+      working-directory:
+        type: string
+        default: '.'
+      install-command:
+        type: string
+        default: 'pip install -e ".[dev]"'
+      run-lint:
+        type: boolean
+        default: true
+      run-format-check:
+        type: boolean
+        default: false
+        description: 'ruff format --check (activar recién cuando el repo esté formateado)'
+      run-tests:
+        type: boolean
+        default: true
+      pytest-args:
+        type: string
+        default: '-q'
+      pre-test-command:
+        type: string
+        default: ''
+        description: 'Corre en el mismo step que pytest, antes (ej: alembic upgrade head)'
+      postgres-image:
+        type: string
+        default: 'postgres:16'
+        description: 'Imagen del service de DB (ej: postgis/postgis:16-3.4)'
+      database-name:
+        type: string
+        default: 'test'
+
+jobs:
+  lint:
+    name: lint
+    if: inputs.run-lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Ruff format check
+        if: inputs.run-format-check
+        run: ruff format --check .
+
+  test:
+    name: test
+    if: inputs.run-tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    services:
+      postgres:
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ${{ inputs.database-name }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/${{ inputs.database-name }}
+      DATABASE_URL_SYNC: postgresql+psycopg2://postgres:postgres@localhost:5432/${{ inputs.database-name }}
+      REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Test
+        run: |
+          ${{ inputs.pre-test-command }}
+          pytest ${{ inputs.pytest-args }}
