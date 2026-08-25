@@ -1,0 +1,13 @@
+{
+  "name": "blackcats-delivery",
+  "displayName": "Blackcats Delivery",
+  "version": "0.1.0",
+  "description": "Sistema de delivery del estudio: intake spec-first, cola por board, playbooks por tipo de proyecto, QA visual con tope y gates determinísticos por hooks.",
+  "author": {
+    "name": "parradura",
+    "url": "https://github.com/parradura-org"
+  },
+  "repository": "https://github.com/parradura-org/workflows",
+  "license": "MIT",
+  "keywords": ["delivery", "spec-first", "playbooks", "jira", "visual-qa"]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "blackcats",
+  "description": "Marketplace privado del estudio: sistema de delivery agéntico (blackcats-delivery).",
+  "owner": {
+    "name": "parradura",
+    "url": "https://github.com/parradura-org"
+  },
+  "plugins": [
+    {
+      "name": "blackcats-delivery",
+      "source": "./blackcats-delivery",
+      "description": "Sistema de delivery del estudio: intake spec-first, cola por board, playbooks por tipo de proyecto, QA visual y gates por hooks.",
+      "version": "0.1.0"
+    }
+  ]
+}
