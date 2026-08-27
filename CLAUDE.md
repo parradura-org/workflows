@@ -26,6 +26,10 @@ repos que lo consumen** — listar consumidores impactados en cada PR.
   duplicar sus reglas — si cambia una convención compartida (formato HANDOFF v2, mapa
   repo→board, gotchas MCP Jira), el cambio va primero en la skill personal dueña.
 - Versionar: bump de `version` en `plugin.json` + `marketplace.json` en cada cambio del plugin.
+- **Gotcha post-update**: al actualizar el plugin instalado, puede quedar `disabled`
+  (pasó con 0.1.0→0.1.1: `/next` desapareció). Después de todo update: `claude plugin list`
+  → si figura disabled, `claude plugin enable blackcats-delivery@blackcats`. Las sesiones
+  abiertas además necesitan `/reload-plugins` o reinicio para ver las skills.
 
 ## Probar el plugin local
 
