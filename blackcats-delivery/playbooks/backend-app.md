@@ -1,8 +1,9 @@
 # Playbook — app con backend
 
-> v1 · Basado en tres proyectos reales: **relay** (spec-first greenfield, monorepo TS),
-> **iosfa** (contract-first, api+front) y **unlam-tools/cuatri** (scaffold→hardening→launch).
-> Actualizado: 2026-08-25. Lo actualiza `/retro` — nunca editar a mano sin proyecto que lo respalde.
+> v1.1 · Basado en cuatro proyectos reales: **relay** (spec-first greenfield, monorepo TS),
+> **iosfa** (contract-first, api+front), **unlam-tools/cuatri** (scaffold→hardening→launch) y
+> **parra-market-intelligence** (loop /next maduro: crawlers+scoring+mapa).
+> Actualizado: 2026-08-27. Lo actualiza `/retro` — nunca editar a mano sin proyecto que lo respalde.
 
 ## Cuándo aplica
 
@@ -72,6 +73,9 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
   de valor core SIN fixtures/mocks. En relay, todo el e2e verde contra fixtures escondió
   durante semanas que la propuesta de valor central **no funcionaba**: los adapters ignoraban
   los tools y nadie clonaba repos de verdad. Verde contra mocks no es verde.
+- **La QA visual de una vista nueva corre con datos representativos seedeados, no contra el
+  estado vacío** (lección pmi/mapa: el bug del worker solo era visible con puntos que dibujar
+  — la vista vacía pasaba la QA entera sin ejercitar nada).
 - **Gate**: el camino de valor core probado contra servicios reales, con evidencia.
 
 ### 6. CI/CD + deploy verificado
@@ -125,7 +129,24 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
   un upgrade accidental esperando sesión.
 - Los clones que leen otras sesiones (`~/startup/projects`, `~/.superset/projects`) quedan
   stale: `git fetch origin` antes de citar estado.
+- El evento `pull_request` de GitHub puede **no disparar ningún run** (hiccup real, pmi): un
+  PR "sin checks" parece limpio. Verificar con `gh run list --branch <rama>` antes de asumir
+  estado de CI; un commit vacío lo destraba.
+- Backend con workers (Celery/colas) + deploy automático en merge: **el deploy mata las tasks
+  en vuelo y los locks single-instance con TTL largo quedan huérfanos** → las corridas
+  siguientes "skippean" en silencio hasta que el TTL vence (pmi: 12h, 3 incidentes). Diseño:
+  lock con TTL corto renovable (heartbeat). Operación: tras deployar con trabajo en vuelo,
+  chequear `TTL` de los locks.
+- Bundlers (Turbopack): los **workers de libs de terceros** (`new Worker(new URL(...,
+  import.meta.url))`) pueden no emitirse como asset → la lib falla EN SILENCIO esperando un
+  archivo que 404ea (pmi: MapLibre, mapa gris sin ningún error). Fix estable: servir el
+  worker desde `public/` con un script de copia en `predev`/`prebuild` + la API de override
+  de la lib (`setWorkerUrl` o equivalente). Y suscribir el evento de error de la lib — suelen
+  ser eventos, no throws.
+- Libs canvas/GL no parsean oklch/lab de tokens CSS modernos (y `getComputedStyle` serializa
+  a lab en Chromium): resolver el token a rgb pintando un píxel en un canvas 2D y leyéndolo.
 
 ## Historial
 
+- 2026-08-27 · v1.1 · fase 5: QA visual de vistas nuevas con datos seedeados; gotchas: evento pull_request sin run, locks huérfanos post-deploy en backends con workers, workers de libs vs bundler, oklch/lab en libs GL · fuente: parra-market-intelligence (tripleta PMI-123/29/40 + PMI-132)
 - 2026-08-25 · v1 · creado por extracción de relay (spec-first, taskboard con gates, lección fixtures), iosfa (contract-first, PaginatedResult, contrato en el mismo PR) y cuatri (viabilidad documentada, migración Supabase→Railway, launch-free) · fuente: recon de repos reales
