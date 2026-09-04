@@ -41,8 +41,8 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
   umbrales — distribución de la señal + el **top-N crudo** — y guardas de sanidad explícitas.
   El top crudo casi siempre es basura de datos (pmi/PAS: asks de USD 1,32 y anticipos de pozo
   lideraban la "subvaluación"); sin esa mirada la spec fija umbrales sobre una distribución
-  imaginaria. Los umbrales van a settings (tunables por env sin PR) y la spec deja escrito
-  cómo se recalibran.
+  imaginaria. Los umbrales van a settings (tunables por env, con default en código y
+  listados en `.env.example`) y la spec deja escrito cómo se recalibran.
 - **Gate**: decisiones de producto confirmadas por el usuario ANTES de codear.
 
 ### 2. Modelo de datos
@@ -102,9 +102,10 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
 - **Backends con workers de concurrencia chica + batch nocturno**: la verificación
   post-deploy que dispara una task a mano queda `reserved` detrás del batch (pmi: concurrency
   2, los crawls ocupan ambos slots, 6 h de cola). Antes de disparar: `celery inspect
-  active/reserved`; tasks manuales en horario sin batch; y **no mergear/deployar en los ±2 min
-  de un slot del beat** — el deploy recicla el worker y mata la corrida en curso (ver gotcha
-  de locks huérfanos).
+  active/reserved`; tasks manuales en horario sin batch; y **no mergear/deployar con tasks en
+  vuelo** (`celery inspect active` vacío) — incluidos los minutos alrededor de un slot del
+  beat, donde la task recién encolada todavía no figura en `active`. El deploy recicla el
+  worker y mata la corrida en curso (ver gotcha de locks huérfanos).
 - **Gate**: deploy en test verificado por el agente (Railway/Vercel CLI), no por optimismo.
 
 ### 7. Auditoría de producción + hardening
@@ -123,6 +124,8 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
 - [ ] CI verde vía reusables (o excepción documentada); flujo dev→test→main respetado.
 - [ ] `/health` con ping a DB; flujo crítico e2e en el ambiente deployado; `.env.example`
       completo + fail-fast.
+- [ ] Rankings/umbrales (si los hay): corpus explorado antes de fijarlos, top-N revisado a
+      mano después.
 - [ ] HANDOFF.md actualizado (formato v2), board sincronizado con evidencia (`/jira`),
       gotchas nuevos en CLAUDE.md.
 
@@ -165,20 +168,24 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
 - Tests de DB con **upsert Core** (`pg_insert`/`text()`): releer objetos ya cargados devuelve
   el identity map STALE de SQLAlchemy — `execution_options(populate_existing=True)` o
   `expire_all()` antes de asertar (pmi: el test "pasaba" leyendo valores viejos).
-- `date.today()` (TZ local) vs `CAST(ts AS date)` (UTC en la DB): tests que fallan solo en
-  una franja horaria (pmi: 21:00-24:00 BA). Fechas de test siempre en UTC.
+- `date.today()` (TZ local) vs `CAST(ts AS date)` (UTC en la DB): el día calendario se
+  calcula en UNA sola TZ, la de la DB (`datetime.now(UTC).date()`), en código Y en tests —
+  `date.today()` en un backend es un bug latente (pmi: un test que fallaba solo 21:00-24:00
+  BA, y el mismo patrón vivo en una ventana de 30 días de un job).
 - Un join nuevo en un SELECT compartido cambia la **aridad de las tuplas**: `grep` de TODOS
   los consumidores antes de mergear — el que rompe está en otro módulo (pmi: alertas
-  desempaquetaba 4 y el feed pasó a rendir 5).
+  desempaquetaba 4 y el feed pasó a rendir 5). Mejor aún: consumidores que desempaquetan
+  por nombre (`Row._mapping` / named tuple), nunca por posición.
 - Guardas de sanidad duplicadas (SQL vs Python, módulo nuevo vs el existente) divergen en
-  silencio: reusar la función existente o testear la equivalencia (Codex cazó un total de
-  5 m² pasando por la guarda nueva).
+  silencio: reusar la función existente o testear la equivalencia (pmi: el reviewer cazó un
+  total de 5 m² pasando por la guarda nueva).
 - Sembrar datos de QA en la DB compartida **mientras corre la suite completa** = falsos rojos
   en tests ajenos. Sembrar después, limpiar al terminar (y desconfiar de un rojo que solo
   aparece con el seed puesto).
 - Dos sesiones de agente en el MISMO working dir: `git status` al arrancar y antes de
-  commitear, y cada una deja en HANDOFF/memoria que la otra existe (pmi: una cerró PMI-134
-  mientras la otra implementaba PMI-45 sobre `app/avm/`).
+  commitear, y cada una deja en HANDOFF/memoria que la otra existe (pmi: una sesión cerró un
+  ticket mientras la otra implementaba otro sobre el mismo módulo). Aplica a cualquier tipo
+  de proyecto.
 - Máquina que duerme: las esperas foreground pierden horas y los polls background se
   congelan con ella. Mirar la hora del **server** antes de decidir ventanas de merge/deploy.
 
