@@ -1,9 +1,9 @@
 # Playbook — app con backend
 
-> v1.1 · Basado en cuatro proyectos reales: **relay** (spec-first greenfield, monorepo TS),
+> v1.2 · Basado en cuatro proyectos reales: **relay** (spec-first greenfield, monorepo TS),
 > **iosfa** (contract-first, api+front), **unlam-tools/cuatri** (scaffold→hardening→launch) y
 > **parra-market-intelligence** (loop /next maduro: crawlers+scoring+mapa).
-> Actualizado: 2026-08-27. Lo actualiza `/retro` — nunca editar a mano sin proyecto que lo respalde.
+> Actualizado: 2026-09-04. Lo actualiza `/retro` — nunca editar a mano sin proyecto que lo respalde.
 
 ## Cuándo aplica
 
@@ -36,6 +36,13 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
 - **Advertencia (lección relay)**: la spec grande es un **artefacto de generación, no
   documentación viva** — el estado vivo va a HANDOFF.md + board. Cuando driftea, se marca
   "desactualizado — no usar como fuente de comandos", no se mantiene en paralelo.
+- **Features de ranking / etiquetado sobre datos reales** (scoring, anomalías, "top N",
+  umbrales): la spec incluye una **exploración read-only del corpus de prod** ANTES de fijar
+  umbrales — distribución de la señal + el **top-N crudo** — y guardas de sanidad explícitas.
+  El top crudo casi siempre es basura de datos (pmi/PAS: asks de USD 1,32 y anticipos de pozo
+  lideraban la "subvaluación"); sin esa mirada la spec fija umbrales sobre una distribución
+  imaginaria. Los umbrales van a settings (tunables por env sin PR) y la spec deja escrito
+  cómo se recalibran.
 - **Gate**: decisiones de producto confirmadas por el usuario ANTES de codear.
 
 ### 2. Modelo de datos
@@ -76,6 +83,10 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
 - **La QA visual de una vista nueva corre con datos representativos seedeados, no contra el
   estado vacío** (lección pmi/mapa: el bug del worker solo era visible con puntos que dibujar
   — la vista vacía pasaba la QA entera sin ejercitar nada).
+- **Aceptación de un ranking = top-N revisado A MANO en prod**, no solo la distribución
+  (pmi/PAS: mediana perfecta en 0 y el top-20 pegado al tope de la guarda, todo avisos sin
+  atributos). El criterio se cierra cuando la lista pasa; si no pasa: recalibrar, re-revisar y
+  capturar el follow-up como ticket — nunca declarar Done por los agregados.
 - **Gate**: el camino de valor core probado contra servicios reales, con evidencia.
 
 ### 6. CI/CD + deploy verificado
@@ -88,6 +99,12 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
   `localhost:3000` ya pasó una vez). Ambientes no productivos **on-demand, apagados por
   default**, con el procedimiento de encendido documentado (patrón cuatri: staging apagado a
   propósito, CUATRI-9).
+- **Backends con workers de concurrencia chica + batch nocturno**: la verificación
+  post-deploy que dispara una task a mano queda `reserved` detrás del batch (pmi: concurrency
+  2, los crawls ocupan ambos slots, 6 h de cola). Antes de disparar: `celery inspect
+  active/reserved`; tasks manuales en horario sin batch; y **no mergear/deployar en los ±2 min
+  de un slot del beat** — el deploy recicla el worker y mata la corrida en curso (ver gotcha
+  de locks huérfanos).
 - **Gate**: deploy en test verificado por el agente (Railway/Vercel CLI), no por optimismo.
 
 ### 7. Auditoría de producción + hardening
@@ -145,8 +162,28 @@ es catálogo+checkout → futuro playbook `ecommerce` (hoy: este + fases propias
   ser eventos, no throws.
 - Libs canvas/GL no parsean oklch/lab de tokens CSS modernos (y `getComputedStyle` serializa
   a lab en Chromium): resolver el token a rgb pintando un píxel en un canvas 2D y leyéndolo.
+- Tests de DB con **upsert Core** (`pg_insert`/`text()`): releer objetos ya cargados devuelve
+  el identity map STALE de SQLAlchemy — `execution_options(populate_existing=True)` o
+  `expire_all()` antes de asertar (pmi: el test "pasaba" leyendo valores viejos).
+- `date.today()` (TZ local) vs `CAST(ts AS date)` (UTC en la DB): tests que fallan solo en
+  una franja horaria (pmi: 21:00-24:00 BA). Fechas de test siempre en UTC.
+- Un join nuevo en un SELECT compartido cambia la **aridad de las tuplas**: `grep` de TODOS
+  los consumidores antes de mergear — el que rompe está en otro módulo (pmi: alertas
+  desempaquetaba 4 y el feed pasó a rendir 5).
+- Guardas de sanidad duplicadas (SQL vs Python, módulo nuevo vs el existente) divergen en
+  silencio: reusar la función existente o testear la equivalencia (Codex cazó un total de
+  5 m² pasando por la guarda nueva).
+- Sembrar datos de QA en la DB compartida **mientras corre la suite completa** = falsos rojos
+  en tests ajenos. Sembrar después, limpiar al terminar (y desconfiar de un rojo que solo
+  aparece con el seed puesto).
+- Dos sesiones de agente en el MISMO working dir: `git status` al arrancar y antes de
+  commitear, y cada una deja en HANDOFF/memoria que la otra existe (pmi: una cerró PMI-134
+  mientras la otra implementaba PMI-45 sobre `app/avm/`).
+- Máquina que duerme: las esperas foreground pierden horas y los polls background se
+  congelan con ella. Mirar la hora del **server** antes de decidir ventanas de merge/deploy.
 
 ## Historial
 
+- 2026-09-04 · v1.2 · fase 1: exploración read-only del corpus antes de fijar umbrales de ranking; fase 5: top-N a mano como gate de aceptación; fase 6: workers saturados por el batch + no deployar en slots del beat; gotchas: identity map stale tras upsert Core, date.today() vs UTC, aridad de tuplas en SELECT compartidos, guardas de sanidad duplicadas, seed vs suite, dos sesiones en un working dir, máquina que duerme · fuente: parra-market-intelligence (PMI-45 PAS + verificación PMI-134)
 - 2026-08-27 · v1.1 · fase 5: QA visual de vistas nuevas con datos seedeados; gotchas: evento pull_request sin run, locks huérfanos post-deploy en backends con workers, workers de libs vs bundler, oklch/lab en libs GL · fuente: parra-market-intelligence (tripleta PMI-123/29/40 + PMI-132)
 - 2026-08-25 · v1 · creado por extracción de relay (spec-first, taskboard con gates, lección fixtures), iosfa (contract-first, PaginatedResult, contrato en el mismo PR) y cuatri (viabilidad documentada, migración Supabase→Railway, launch-free) · fuente: recon de repos reales
