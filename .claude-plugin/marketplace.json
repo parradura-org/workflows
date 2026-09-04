@@ -10,7 +10,7 @@
       "name": "blackcats-delivery",
       "source": "./blackcats-delivery",
       "description": "Sistema de delivery del estudio: intake spec-first, cola por board, playbooks por tipo de proyecto, QA visual y gates por hooks.",
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   ]
 }
